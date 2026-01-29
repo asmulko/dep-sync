@@ -90,10 +90,11 @@ export function mergeOptions(cliOptions, configOptions) {
     dryRun: cliOptions.dryRun ?? configOptions.dryRun ?? false,
     sync: cliOptions.sync ?? configOptions.sync ?? true, // sync ON by default
     commit: cliOptions.commit ?? configOptions.commit ?? false,
-    singleCommit: cliOptions.singleCommit ?? configOptions.singleCommit ?? false,
     push: cliOptions.push ?? configOptions.push ?? false,
     message: cliOptions.message || configOptions.message,
     branch: cliOptions.branch || configOptions.branch,
     noPeer: cliOptions.noPeer ?? configOptions.noPeer ?? false,
+    bumpVersion: cliOptions.bumpVersion || configOptions.bumpVersion,
+    preid: cliOptions.preid || configOptions.preid,
   };
 }

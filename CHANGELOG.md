@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-01-29
+
+### Added
+- `--version` / `-V` flag to show tool version
+- Skip projects already at target version (shows "already at target version" instead of updating)
+- Summary now shows count of skipped projects
+
+### Changed
+- Removed `--single-commit` option - dependency updates now always use a single commit
+- Version bumps always use `npm version` which creates commits and tags (e.g., `v1.0.1-rc.0`)
+- Simplified flow: 1) dep updates → single commit, 2) version bumps → npm commits/tags per project
+
+### Fixed
+- `--bump-version` and `--preid` now work correctly when combined with `--config`
+
+## [1.3.1] - 2026-01-29
+
+### Fixed
+- `--bump-version` now works correctly when dependencies are already at target version
+- Version bump is now applied to all configured paths when no dependency updates are needed
+
 ## [1.3.0] - 2026-01-29
 
 ### Added

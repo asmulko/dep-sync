@@ -95,11 +95,8 @@ dep-sync --interactive --paths ./apps/*
 # Skip git sync
 dep-sync react 18.2.0 --paths ./apps/* --no-sync
 
-# Commit changes (separate commit per package by default)
+# Commit changes (single commit for all dependency updates)
 dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit
-
-# Single commit for all packages
-dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit --single-commit
 
 # Commit and push to remote
 dep-sync react 18.2.0 --paths ./apps/* --commit --push
@@ -113,7 +110,8 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --message "chore(deps): upgrade 
 
 ### Bump project versions
 
-Automatically bump the `version` field in each project's `package.json` after updating dependencies:
+Automatically bump the `version` field in each project's `package.json` after updating dependencies.
+Version bumps use `npm version` which creates a commit and git tag (e.g., `v1.0.1`) for each project:
 
 ```bash
 # Patch version bump (1.0.0 → 1.0.1)
@@ -132,7 +130,8 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease --prei
 dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease --preid beta
 ```
 
-> **Note:** Version bumps are only applied to projects that actually had dependency updates.
+> **Note:** Version bumps are only applied to projects that had dependency updates.
+> Prerelease bumps correctly increment: `1.0.1-rc.2` → `1.0.1-rc.3`
 
 ### Standalone version bump
 
@@ -156,8 +155,7 @@ dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit --push
 | `--dry-run` | Preview changes without modifying files |
 | `--no-peer` | Skip peerDependencies |
 | `--no-sync` | Skip git fetch/pull before updating (sync is ON by default) |
-| `--commit` | Commit changes after updating (separate commit per package) |
-| `--single-commit` | Combine all package updates into one commit |
+| `--commit` | Commit dependency changes (single commit for all packages) |
 | `--push` | Push to remote after committing (skips repos that are behind) |
 | `--message <msg>` | Custom commit message |
 | `--branch <name>` | Create a new branch before committing |
@@ -165,6 +163,7 @@ dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit --push
 | `--preid <tag>` | Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease |
 | `--config <path>` | Path to config file |
 | `--interactive, -i` | Run in interactive mode |
+| `--version, -V` | Show version number |
 | `--help` | Show help message |
 
 > **Note:** The package will be automatically updated in all dependency types where it exists

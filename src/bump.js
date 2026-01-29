@@ -90,21 +90,36 @@ export function bumpDependency(options) {
 
     // Find package in all dependency types
     const foundIn = [];
+    let alreadyAtVersion = false;
     for (const depType of activeDeps) {
       if (pkgJson[depType] && packageName in pkgJson[depType]) {
         const newVersion = getVersionForType(version, exact, depType);
+        const oldVersion = pkgJson[depType][packageName];
+        
+        // Skip if version is already at target
+        if (oldVersion === newVersion) {
+          alreadyAtVersion = true;
+          continue;
+        }
+        
         foundIn.push({
           type: depType,
           shortType: DEP_SHORT_NAMES[depType],
-          oldVersion: pkgJson[depType][packageName],
+          oldVersion,
           newVersion,
         });
       }
     }
 
     if (foundIn.length === 0) {
-      console.log(`${yellow("⚠")} ${bold(projectName)}: ${packageName} ${gray("not found")}`);
-      results.notFound.push({ project: projectName });
+      if (alreadyAtVersion) {
+        console.log(`${gray("–")} ${bold(projectName)}: ${gray("already at target version")}`);
+        results.skipped = results.skipped || [];
+        results.skipped.push({ project: projectName });
+      } else {
+        console.log(`${yellow("⚠")} ${bold(projectName)}: ${packageName} ${gray("not found")}`);
+        results.notFound.push({ project: projectName });
+      }
       continue;
     }
 
@@ -161,6 +176,9 @@ export function bumpDependency(options) {
   }
   console.log(bold("Summary:"));
   console.log(`  ${green("✔")} ${dryRun ? "Would update" : "Updated"}: ${results.updated.length}`);
+  if (results.skipped && results.skipped.length > 0) {
+    console.log(`  ${gray("–")} Already at version: ${results.skipped.length}`);
+  }
   if (results.notFound.length > 0) {
     console.log(`  ${yellow("⚠")} Not found: ${results.notFound.length}`);
   }
@@ -174,6 +192,7 @@ export function bumpDependency(options) {
 
 /**
  * Bump the version field in a project's package.json using npm version.
+ * npm version will create a commit and tag automatically.
  * @param {Object} options
  * @param {string} options.projectPath - Path to project directory
  * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
@@ -207,10 +226,9 @@ export function bumpProjectVersion(options) {
     }
 
     if (!dryRun) {
-      // Run npm version --no-git-tag-version to bump without creating git tag
-      // Add --preid for prerelease with custom identifier
+      // Run npm version - it will create commit and tag automatically
       const preidArg = bumpType === "prerelease" && preid ? ` --preid ${preid}` : "";
-      execSync(`npm version ${bumpType}${preidArg} --no-git-tag-version`, {
+      execSync(`npm version ${bumpType}${preidArg}`, {
         cwd: absolutePath,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
@@ -241,6 +259,7 @@ export function bumpProjectVersion(options) {
 
 /**
  * Bump versions in multiple projects using npm version.
+ * Each project gets its own commit and tag from npm.
  * @param {Object} options
  * @param {string[]} options.paths - Paths to project directories
  * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
@@ -259,6 +278,11 @@ export function bumpVersions(options) {
   console.log();
   const preidDisplay = bumpType === "prerelease" && preid ? ` --preid ${preid}` : "";
   console.log(bold(`Bumping versions (${bumpType}${preidDisplay}):`));
+  if (!dryRun) {
+    console.log(gray("  (npm will create commits and tags)"));
+  } else {
+    console.log(gray("  (would create commits and tags via npm)"));
+  }
   console.log();
 
   for (const projectPath of paths) {
@@ -266,7 +290,8 @@ export function bumpVersions(options) {
     const result = bumpProjectVersion({ projectPath, bumpType, preid, dryRun });
 
     if (result.success) {
-      console.log(`${green("✔")} ${bold(projectName)}: ${result.oldVersion} → ${result.newVersion}`);
+      const tagInfo = !dryRun ? ` ${gray(`(committed & tagged v${result.newVersion})`)}` : "";
+      console.log(`${green("✔")} ${bold(projectName)}: ${result.oldVersion} → ${result.newVersion}${tagInfo}`);
       results.updated.push({
         projectName,
         filePath: result.filePath,

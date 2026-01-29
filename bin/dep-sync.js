@@ -2,12 +2,18 @@
 
 import { parseArgs } from "node:util";
 import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { bumpDependency, bumpVersions } from "../src/bump.js";
 import { loadConfig, mergeOptions } from "../src/config.js";
 import { interactiveMode } from "../src/interactive.js";
 import { performGitOperations, prepareRepo, getGitRoot, isGitRepo, pushToRemote, isBehindRemote } from "../src/git.js";
 import { validateOptions, sanitizeBranchName } from "../src/validate.js";
 import { bold, red, yellow, gray, green, cyan } from "../src/colors.js";
+
+// Get package version
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
 
 const usage = `
 Usage: dep-sync <package> <version> [options]
@@ -28,14 +34,14 @@ Options:
   --no-peer            Skip peerDependencies (they require special care)
   --dry-run            Preview changes without modifying files
   --no-sync            Skip git fetch/pull before updating (sync is ON by default)
-  --commit             Commit changes after updating (separate commit per package)
-  --single-commit      Combine all package updates into one commit
+  --commit             Commit changes after updating
   --push               Push to remote after committing (skips repos that are behind)
   --message <msg>      Custom commit message (default: "Update <pkg> dependency")
   --branch <name>      Create a new branch before committing
   --bump-version <type> Bump version in each project's package.json (patch|minor|major|prerelease)
   --preid <tag>        Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease
   --interactive, -i    Run in interactive mode
+  --version, -V        Show version number
   --help               Show this help message
 
 Note: The package will be updated in all dependency types where it exists.
@@ -48,11 +54,8 @@ Examples:
   # Multiple packages
   dep-sync --pkg react@18.2.0 --pkg react-dom@18.2.0 --paths ./apps/*
 
-  # Commit with separate commits per package (default)
+  # Commit dependency updates
   dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit
-
-  # Combine all updates into single commit
-  dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit --single-commit
 
   # Skip git sync (fetch/pull)
   dep-sync react 18.2.0 --paths ./apps/* --no-sync --commit
@@ -95,6 +98,12 @@ function printUsage() {
 async function main() {
   const args = process.argv.slice(2);
 
+  // Check for --version or -V first
+  if (args.includes("--version") || args.includes("-V")) {
+    console.log(pkg.version);
+    process.exit(0);
+  }
+
   if (args.includes("--help") || args.length === 0) {
     printUsage();
   }
@@ -110,7 +119,6 @@ async function main() {
       "dry-run": { type: "boolean", default: false },
       "no-sync": { type: "boolean", default: false },
       commit: { type: "boolean", default: false },
-      "single-commit": { type: "boolean", default: false },
       push: { type: "boolean", default: false },
       message: { type: "string" },
       branch: { type: "string" },
@@ -130,7 +138,6 @@ async function main() {
     dryRun: values["dry-run"],
     sync: !values["no-sync"], // sync is ON by default
     commit: values.commit,
-    singleCommit: values["single-commit"],
     push: values.push,
     message: values.message,
     branch: values.branch,
@@ -232,7 +239,6 @@ async function main() {
 
   // Process each package
   let allUpdatedFiles = [];
-  let branchCreated = false;
   let hadErrors = false;
 
   for (const pkg of packages) {
@@ -259,25 +265,11 @@ async function main() {
     if (results.updated.length > 0) {
       const updatedFilePaths = results.updated.map((r) => r.filePath);
       allUpdatedFiles.push(...updatedFilePaths);
-
-      // Per-package commit (unless --single-commit)
-      if (baseOptions.commit && !baseOptions.singleCommit) {
-        performGitOperations({
-          updatedFiles: updatedFilePaths,
-          packageName: pkg.name,
-          version: pkg.version,
-          shouldCommit: true,
-          branch: !branchCreated ? baseOptions.branch : undefined, // Only create branch once
-          commitMessage: baseOptions.message,
-          dryRun: baseOptions.dryRun,
-        });
-        branchCreated = true;
-      }
     }
   }
 
-  // Single commit mode: commit all packages together
-  if (baseOptions.singleCommit && (baseOptions.commit || baseOptions.branch) && allUpdatedFiles.length > 0) {
+  // Commit all dependency updates together (single commit)
+  if (baseOptions.commit && allUpdatedFiles.length > 0) {
     const uniqueFiles = [...new Set(allUpdatedFiles)];
     const packageNames = packages.map((p) => p.name);
     
@@ -285,7 +277,7 @@ async function main() {
       updatedFiles: uniqueFiles,
       packageName: packageNames,
       version: "",
-      shouldCommit: baseOptions.commit,
+      shouldCommit: true,
       branch: baseOptions.branch,
       commitMessage: baseOptions.message,
       dryRun: baseOptions.dryRun,
@@ -305,14 +297,16 @@ async function main() {
     });
   }
 
-  // Bump project versions if requested
+  // Bump project versions if requested (npm handles commits and tags)
   if (baseOptions.bumpVersion) {
     // Determine which projects to bump:
-    // - If standalone mode (no packages), bump all projects in paths
+    // - If standalone mode OR no packages to update, bump all projects in paths
     // - Otherwise, only bump projects that had dependency updates
-    const projectPathsToBump = isStandaloneBumpVersion
+    const projectPathsToBump = (isStandaloneBumpVersion || packages.length === 0)
       ? baseOptions.paths
-      : [...new Set(allUpdatedFiles.map((f) => path.dirname(f)))];
+      : allUpdatedFiles.length > 0
+        ? [...new Set(allUpdatedFiles.map((f) => path.dirname(f)))]
+        : baseOptions.paths; // Fallback to all paths if no updates (but packages were specified)
 
     if (projectPathsToBump.length > 0) {
       const versionResults = bumpVersions({
@@ -322,21 +316,10 @@ async function main() {
         dryRun: baseOptions.dryRun,
       });
 
-      // Commit version bumps if --commit is enabled
-      if (baseOptions.commit && versionResults.updated.length > 0) {
+      // Add files to allUpdatedFiles for push
+      if (versionResults.updated.length > 0) {
         const versionFiles = versionResults.updated.map((r) => r.filePath);
-        
-        // Add to allUpdatedFiles for push
         allUpdatedFiles.push(...versionFiles);
-        
-        performGitOperations({
-          updatedFiles: versionFiles,
-          packageName: "version bump",
-          version: baseOptions.bumpVersion,
-          shouldCommit: true,
-          commitMessage: baseOptions.message || `Bump versions (${baseOptions.bumpVersion})`,
-          dryRun: baseOptions.dryRun,
-        });
       }
 
       if (versionResults.errors.length > 0) {
