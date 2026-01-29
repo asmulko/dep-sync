@@ -84,7 +84,18 @@ export default {
 
 ```bash
 dep-sync --interactive --paths ./apps/*
+
+# Combine with config file (config provides defaults)
+dep-sync --interactive --config dep-sync.config.json
 ```
+
+Interactive mode guides you through:
+- **Operation selection**: Update packages, bump versions, or both
+- **Package updates**: Package name, target version, project selection
+- **Version bumping**: Bump type (patch/minor/major/prerelease) and preid
+- **Git options**: Commit and push prompts
+
+When combined with `--config`, the config file provides default values (paths, packages, etc.) that you can override interactively.
 
 ### Git integration
 
@@ -139,10 +150,24 @@ Bump project versions without updating any dependencies:
 
 ```bash
 # Bump all projects to next patch version
-dep-sync --bump-version patch --paths ./apps/* --commit
+dep-sync --bump-version patch --paths ./apps/*
 
-# Bump to prerelease with commit and push
-dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit --push
+# Bump to prerelease with push
+dep-sync --bump-version prerelease --preid rc --paths ./apps/* --push
+```
+
+Or use a config file for version bumps only:
+
+```json
+{
+  "paths": ["./apps/app1", "./apps/app2"],
+  "bumpVersion": "prerelease",
+  "preid": "rc"
+}
+```
+
+```bash
+dep-sync --config dep-sync.config.json
 ```
 
 ## Options
@@ -163,7 +188,7 @@ dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit --push
 | `--preid <tag>` | Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease |
 | `--config <path>` | Path to config file |
 | `--interactive, -i` | Run in interactive mode |
-| `--version, -V` | Show version number |
+| `--version, -v, -V` | Show version number |
 | `--help` | Show help message |
 
 > **Note:** The package will be automatically updated in all dependency types where it exists

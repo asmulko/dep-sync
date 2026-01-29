@@ -41,7 +41,7 @@ Options:
   --bump-version <type> Bump version in each project's package.json (patch|minor|major|prerelease)
   --preid <tag>        Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease
   --interactive, -i    Run in interactive mode
-  --version, -V        Show version number
+  --version, -v, -V    Show version number
   --help               Show this help message
 
 Note: The package will be updated in all dependency types where it exists.
@@ -98,8 +98,8 @@ function printUsage() {
 async function main() {
   const args = process.argv.slice(2);
 
-  // Check for --version or -V first
-  if (args.includes("--version") || args.includes("-V")) {
+  // Check for --version, -V, or -v first
+  if (args.includes("--version") || args.includes("-V") || args.includes("-v")) {
     console.log(pkg.version);
     process.exit(0);
   }
@@ -152,13 +152,8 @@ async function main() {
     !values.pkg?.length && 
     positionals.length === 0;
 
-  if (values.interactive) {
-    // Interactive mode - prompts for all input, ignores positionals
-    const interactiveResult = await interactiveMode(baseOptions);
-    packages = [{ name: interactiveResult.packageName, version: interactiveResult.version }];
-    baseOptions = { ...baseOptions, ...interactiveResult };
-  } else if (values.config) {
-    // Load from config file
+  // Load config first if provided (can be combined with interactive)
+  if (values.config) {
     const configOptions = await loadConfig(values.config);
     
     // Check if config has multiple packages
@@ -169,18 +164,36 @@ async function main() {
     }
     
     baseOptions = mergeOptions(baseOptions, configOptions);
-  } else if (values.pkg && values.pkg.length > 0) {
-    // Multi-package mode via --pkg flags
-    packages = values.pkg.map(parsePackageSpec);
-  } else if (!isStandaloneBumpVersion) {
-    // Single package mode (positional args) - only if not standalone bump-version
-    if (positionals.length < 2) {
-      console.error("Error: package name and version are required.\n");
-      printUsage();
-    }
+  }
 
-    const [packageName, version] = positionals;
-    packages = [{ name: packageName, version }];
+  if (values.interactive) {
+    // Interactive mode - prompts for input, uses config/CLI values as defaults
+    const interactiveResult = await interactiveMode(baseOptions);
+    
+    // Only add packages if user chose to update packages
+    if (interactiveResult.packageName) {
+      packages = [{ name: interactiveResult.packageName, version: interactiveResult.version }];
+    } else if (interactiveResult.standaloneBump) {
+      // Standalone bump mode - clear packages
+      packages = [];
+    }
+    
+    baseOptions = { ...baseOptions, ...interactiveResult };
+  } else if (!values.config) {
+    // Not interactive and no config - parse from CLI
+    if (values.pkg && values.pkg.length > 0) {
+      // Multi-package mode via --pkg flags
+      packages = values.pkg.map(parsePackageSpec);
+    } else if (!isStandaloneBumpVersion) {
+      // Single package mode (positional args) - only if not standalone bump-version
+      if (positionals.length < 2) {
+        console.error("Error: package name and version are required.\n");
+        printUsage();
+      }
+
+      const [packageName, version] = positionals;
+      packages = [{ name: packageName, version }];
+    }
   }
 
   // Validate paths
@@ -192,14 +205,12 @@ async function main() {
   // Deduplicate paths
   baseOptions.paths = [...new Set(baseOptions.paths)];
 
-  if (packages.length === 0 && !isStandaloneBumpVersion) {
+  // Check if this is standalone bump-version mode (including from config)
+  const isStandaloneBumpVersionFinal = baseOptions.bumpVersion && packages.length === 0;
+
+  if (packages.length === 0 && !isStandaloneBumpVersionFinal) {
     console.error("Error: at least one package is required.\n");
     printUsage();
-  }
-
-  // Warn if --single-commit without --commit
-  if (baseOptions.singleCommit && !baseOptions.commit) {
-    console.log(`${yellow("⚠")} --single-commit has no effect without --commit`);
   }
 
   // Sanitize branch name if provided
@@ -302,7 +313,7 @@ async function main() {
     // Determine which projects to bump:
     // - If standalone mode OR no packages to update, bump all projects in paths
     // - Otherwise, only bump projects that had dependency updates
-    const projectPathsToBump = (isStandaloneBumpVersion || packages.length === 0)
+    const projectPathsToBump = (isStandaloneBumpVersionFinal || packages.length === 0)
       ? baseOptions.paths
       : allUpdatedFiles.length > 0
         ? [...new Set(allUpdatedFiles.map((f) => path.dirname(f)))]
