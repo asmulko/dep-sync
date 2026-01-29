@@ -37,6 +37,7 @@ export function mergeOptions(cliOptions, configOptions) {
     sync: cliOptions.sync ?? configOptions.sync ?? true, // sync ON by default
     commit: cliOptions.commit ?? configOptions.commit ?? false,
     singleCommit: cliOptions.singleCommit ?? configOptions.singleCommit ?? false,
+    push: cliOptions.push ?? configOptions.push ?? false,
     message: cliOptions.message || configOptions.message,
     branch: cliOptions.branch || configOptions.branch,
     noPeer: cliOptions.noPeer ?? configOptions.noPeer ?? false,

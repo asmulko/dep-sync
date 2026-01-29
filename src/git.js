@@ -99,6 +99,44 @@ export function hasUpstream(cwd) {
 }
 
 /**
+ * Check if local branch is behind remote.
+ * @param {string} cwd - Working directory
+ * @returns {boolean}
+ */
+export function isBehindRemote(cwd) {
+  try {
+    git("fetch", cwd);
+    const behind = git("rev-list --count HEAD..@{upstream}", cwd);
+    return parseInt(behind, 10) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Push to remote.
+ * @param {string} cwd - Working directory
+ * @param {string} [branch] - Branch name (optional, uses current branch)
+ * @returns {{ success: boolean, error?: string }}
+ */
+export function pushToRemote(cwd, branch) {
+  try {
+    const currentBranch = branch || getCurrentBranch(cwd);
+    
+    // Check if we have an upstream
+    if (!hasUpstream(cwd)) {
+      git(`push --set-upstream origin "${escapeShellArg(currentBranch)}"`, cwd);
+    } else {
+      git("push", cwd);
+    }
+    
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Prepare git repo before updates: fetch and pull --rebase.
  * Stops if there are uncommitted changes.
  * @param {string} dir - Directory inside the repo

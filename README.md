@@ -97,8 +97,11 @@ dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit
 # Single commit for all packages
 dep-sync --pkg react@18.2.0 --pkg lodash@4.0.0 --paths ./apps/* --commit --single-commit
 
-# Create branch and commit
-dep-sync react 18.2.0 --paths ./apps/* --commit --branch chore/react-18
+# Commit and push to remote
+dep-sync react 18.2.0 --paths ./apps/* --commit --push
+
+# Create branch, commit, and push
+dep-sync react 18.2.0 --paths ./apps/* --commit --branch chore/react-18 --push
 
 # Custom commit message
 dep-sync react 18.2.0 --paths ./apps/* --commit --message "chore(deps): upgrade react"
@@ -116,6 +119,7 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --message "chore(deps): upgrade 
 | `--no-sync` | Skip git fetch/pull before updating (sync is ON by default) |
 | `--commit` | Commit changes after updating (separate commit per package) |
 | `--single-commit` | Combine all package updates into one commit |
+| `--push` | Push to remote after committing (skips repos that are behind) |
 | `--message <msg>` | Custom commit message |
 | `--branch <name>` | Create a new branch before committing |
 | `--config <path>` | Path to config file |

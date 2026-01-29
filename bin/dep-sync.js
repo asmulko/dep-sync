@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
+import path from "node:path";
 import { bumpDependency } from "../src/bump.js";
 import { loadConfig, mergeOptions } from "../src/config.js";
 import { interactiveMode } from "../src/interactive.js";
-import { performGitOperations, prepareRepo, getGitRoot, isGitRepo } from "../src/git.js";
+import { performGitOperations, prepareRepo, getGitRoot, isGitRepo, pushToRemote, isBehindRemote } from "../src/git.js";
 import { validateOptions, sanitizeBranchName } from "../src/validate.js";
-import { bold, red, yellow, gray, green } from "../src/colors.js";
+import { bold, red, yellow, gray, green, cyan } from "../src/colors.js";
 
 const usage = `
 Usage: dep-sync <package> <version> [options]
@@ -28,6 +29,7 @@ Options:
   --no-sync            Skip git fetch/pull before updating (sync is ON by default)
   --commit             Commit changes after updating (separate commit per package)
   --single-commit      Combine all package updates into one commit
+  --push               Push to remote after committing (skips repos that are behind)
   --message <msg>      Custom commit message (default: "chore: update <pkg> to <version>")
   --branch <name>      Create a new branch before committing
   --interactive, -i    Run in interactive mode
@@ -100,6 +102,7 @@ async function main() {
       "no-sync": { type: "boolean", default: false },
       commit: { type: "boolean", default: false },
       "single-commit": { type: "boolean", default: false },
+      push: { type: "boolean", default: false },
       message: { type: "string" },
       branch: { type: "string" },
       interactive: { type: "boolean", short: "i", default: false },
@@ -117,6 +120,7 @@ async function main() {
     sync: !values["no-sync"], // sync is ON by default
     commit: values.commit,
     singleCommit: values["single-commit"],
+    push: values.push,
     message: values.message,
     branch: values.branch,
   };
@@ -273,6 +277,65 @@ async function main() {
       branch: baseOptions.branch,
       dryRun: baseOptions.dryRun,
     });
+  }
+
+  // Push to remote if requested
+  if (baseOptions.push && allUpdatedFiles.length > 0) {
+    console.log();
+    console.log(bold("Pushing to remote:"));
+    
+    // Get unique git roots from updated files
+    const seenRoots = new Set();
+    const pushResults = { success: [], failed: [], skipped: [] };
+    
+    for (const filePath of allUpdatedFiles) {
+      const dir = path.dirname(filePath);
+      if (!isGitRepo(dir)) continue;
+      
+      const gitRoot = getGitRoot(dir);
+      if (seenRoots.has(gitRoot)) continue;
+      seenRoots.add(gitRoot);
+      
+      const repoName = path.basename(gitRoot);
+      
+      if (baseOptions.dryRun) {
+        console.log(`  ${gray("Would push:")} ${repoName}`);
+        pushResults.success.push(repoName);
+        continue;
+      }
+      
+      // Check if behind remote
+      if (isBehindRemote(gitRoot)) {
+        console.log(`  ${yellow("⚠")} ${repoName}: ${yellow("behind remote - please pull manually")}`);
+        pushResults.skipped.push(repoName);
+        continue;
+      }
+      
+      // Try to push
+      process.stdout.write(`  ${cyan("⟳")} Pushing ${bold(repoName)}...`);
+      const result = pushToRemote(gitRoot);
+      
+      if (result.success) {
+        process.stdout.write(`\r  ${green("✔")} Pushed ${bold(repoName)}     \n`);
+        pushResults.success.push(repoName);
+      } else {
+        process.stdout.write(`\r  ${red("✖")} ${repoName}: ${red("push failed")}     \n`);
+        console.log(`      ${gray(result.error)}`);
+        pushResults.failed.push(repoName);
+      }
+    }
+    
+    // Push summary
+    if (pushResults.skipped.length > 0 || pushResults.failed.length > 0) {
+      console.log();
+      if (pushResults.skipped.length > 0) {
+        console.log(`${yellow("⚠")} ${pushResults.skipped.length} repo(s) skipped - need manual pull first`);
+      }
+      if (pushResults.failed.length > 0) {
+        console.log(`${red("✖")} ${pushResults.failed.length} repo(s) failed to push`);
+        hadErrors = true;
+      }
+    }
   }
 
   // Exit with error code if any validation failed
