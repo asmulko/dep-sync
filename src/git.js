@@ -238,9 +238,10 @@ export function defaultCommitMessage(packageNames, version) {
 
 /**
  * Perform git operations after updating dependencies.
+ * Handles multiple repositories when projects are in different git roots.
  * @param {Object} options
  * @param {string[]} options.updatedFiles - Paths to updated package.json files
- * @param {string} options.packageName - Name of the package that was updated
+ * @param {string|string[]} options.packageName - Name(s) of the package(s) that were updated
  * @param {string} options.version - Version that was set
  * @param {boolean} options.shouldCommit - Whether to commit changes
  * @param {string} options.branch - Branch name to create (optional)
@@ -255,51 +256,76 @@ export function performGitOperations(options) {
     return { success: false, reason: "No files to commit" };
   }
 
-  // Find git root from the first updated file
-  const firstFile = updatedFiles[0];
-  const fileDir = path.dirname(firstFile);
-
-  if (!isGitRepo(fileDir)) {
-    console.log(`${yellow("⚠")} ${gray("Not a git repository, skipping git operations")}`);
-    return { success: false, reason: "Not a git repository" };
+  // Group files by their git root
+  const filesByRoot = new Map();
+  
+  for (const filePath of updatedFiles) {
+    const fileDir = path.dirname(filePath);
+    
+    if (!isGitRepo(fileDir)) {
+      continue;
+    }
+    
+    const gitRoot = getGitRoot(fileDir);
+    
+    if (!filesByRoot.has(gitRoot)) {
+      filesByRoot.set(gitRoot, []);
+    }
+    filesByRoot.get(gitRoot).push(filePath);
   }
 
-  const gitRoot = getGitRoot(fileDir);
+  if (filesByRoot.size === 0) {
+    console.log(`${yellow("⚠")} ${gray("No git repositories found, skipping git operations")}`);
+    return { success: false, reason: "No git repositories found" };
+  }
+
   const message = commitMessage || defaultCommitMessage(packageName, version);
 
   console.log();
   console.log(bold("Git Operations:"));
 
   if (dryRun) {
-    if (branch) {
-      console.log(`  ${gray("Would create branch:")} ${cyan(branch)}`);
+    for (const [gitRoot, files] of filesByRoot) {
+      const repoName = path.basename(gitRoot);
+      if (branch) {
+        console.log(`  ${gray("Would create branch in")} ${repoName}: ${cyan(branch)}`);
+      }
+      console.log(`  ${gray("Would stage in")} ${repoName}: ${files.length} file(s)`);
+      console.log(`  ${gray("Would commit in")} ${repoName}: ${message}`);
     }
-    console.log(`  ${gray("Would stage:")} ${updatedFiles.length} file(s)`);
-    console.log(`  ${gray("Would commit:")} ${message}`);
     return { success: true, dryRun: true };
   }
 
-  try {
-    // Create branch if specified
-    if (branch) {
-      console.log(`  ${green("✔")} Creating branch: ${bold(branch)}`);
-      createBranch(branch, gitRoot);
+  const results = { success: true, repos: [] };
+
+  for (const [gitRoot, files] of filesByRoot) {
+    const repoName = path.basename(gitRoot);
+    
+    try {
+      // Create branch if specified
+      if (branch) {
+        console.log(`  ${green("✔")} Creating branch in ${repoName}: ${bold(branch)}`);
+        createBranch(branch, gitRoot);
+      }
+
+      // Stage files (use paths relative to this git root)
+      const relativeFiles = files.map((f) => path.relative(gitRoot, f));
+      stageFiles(relativeFiles, gitRoot);
+      console.log(`  ${green("✔")} Staged in ${repoName}: ${files.length} file(s)`);
+
+      // Commit if requested
+      if (shouldCommit) {
+        commit(message, gitRoot);
+        console.log(`  ${green("✔")} Committed in ${repoName}: ${gray(message)}`);
+      }
+
+      results.repos.push({ repo: repoName, success: true });
+    } catch (err) {
+      console.log(`  ${red("✖")} Git operation failed in ${repoName}: ${err.message}`);
+      results.repos.push({ repo: repoName, success: false, reason: err.message });
+      results.success = false;
     }
-
-    // Stage files
-    const relativeFiles = updatedFiles.map((f) => path.relative(gitRoot, f));
-    stageFiles(relativeFiles, gitRoot);
-    console.log(`  ${green("✔")} Staged ${updatedFiles.length} file(s)`);
-
-    // Commit if requested
-    if (shouldCommit) {
-      commit(message, gitRoot);
-      console.log(`  ${green("✔")} Committed: ${gray(message)}`);
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.log(`  ${red("✖")} Git operation failed: ${err.message}`);
-    return { success: false, reason: err.message };
   }
+
+  return results;
 }
