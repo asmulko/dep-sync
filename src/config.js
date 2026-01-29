@@ -1,9 +1,13 @@
 import path from "node:path";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 /**
- * Load config from a JS file.
+ * Load config from a JS or JSON file.
+ * Supports: .json, .mjs (ES modules), .cjs (CommonJS), .js (tries both)
  * @param {string} configPath - Path to the config file
  * @returns {Promise<Object>} Config object
  */
@@ -14,10 +18,60 @@ export async function loadConfig(configPath) {
     throw new Error(`Config file not found: ${absolutePath}`);
   }
 
-  const fileUrl = pathToFileURL(absolutePath).href;
-  const module = await import(fileUrl);
+  const ext = path.extname(absolutePath).toLowerCase();
 
-  return module.default || module;
+  // Handle JSON files
+  if (ext === ".json") {
+    const content = fs.readFileSync(absolutePath, "utf-8");
+    try {
+      return JSON.parse(content);
+    } catch (err) {
+      throw new Error(`Invalid JSON in config file: ${err.message}`);
+    }
+  }
+
+  // Handle .cjs files (CommonJS)
+  if (ext === ".cjs") {
+    try {
+      // Clear require cache to allow reloading
+      delete require.cache[absolutePath];
+      return require(absolutePath);
+    } catch (err) {
+      throw new Error(`Error loading CommonJS config: ${err.message}`);
+    }
+  }
+
+  // Handle .mjs files (ES modules)
+  if (ext === ".mjs") {
+    const fileUrl = pathToFileURL(absolutePath).href;
+    const module = await import(fileUrl);
+    return module.default || module;
+  }
+
+  // Handle .js files - try ES module first, fall back to CommonJS
+  const fileUrl = pathToFileURL(absolutePath).href;
+  try {
+    const module = await import(fileUrl);
+    return module.default || module;
+  } catch (err) {
+    // If ES module import fails, try CommonJS
+    if (err.message.includes("Unexpected token 'export'") || 
+        err.message.includes("Cannot use import statement") ||
+        err.code === "ERR_REQUIRE_ESM") {
+      try {
+        delete require.cache[absolutePath];
+        return require(absolutePath);
+      } catch (requireErr) {
+        // Both failed - give helpful error message
+        throw new Error(
+          `Could not load config file. Use .json, .mjs (ES modules), or .cjs (CommonJS).\n` +
+          `  ES module error: ${err.message}\n` +
+          `  CommonJS error: ${requireErr.message}`
+        );
+      }
+    }
+    throw err;
+  }
 }
 
 /**

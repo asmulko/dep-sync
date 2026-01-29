@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-29
+
+### Added
+- JSON config file support (`.json`) - recommended for simplicity
+- CommonJS config file support (`.cjs`) - for projects without ES modules
+- ES Module config file support (`.mjs`) - always treated as ES module
+- Auto-detection for `.js` files - tries ES module first, falls back to CommonJS
+
+### Changed
+- Updated README to recommend JSON config format
+- Added example `dep-sync.config.json` in project root
+
 ## [1.1.0] - 2026-01-29
 
 ### Added

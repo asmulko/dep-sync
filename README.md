@@ -42,24 +42,28 @@ dep-sync --pkg react@18.2.0 --pkg react-dom@18.2.0 --paths ./apps/*
 ### Using a config file
 
 ```bash
-dep-sync --config dep-sync.config.js
+dep-sync --config dep-sync.config.json
 ```
 
-Example config file (single package):
+Supports `.json`, `.js`, `.mjs`, and `.cjs` config files. **JSON is recommended** as it works in any project without module system issues.
 
-```javascript
-export default {
-  packageName: "react",
-  version: "18.2.0",
-  paths: [
+Example JSON config (recommended):
+
+```json
+{
+  "packages": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "paths": [
     "./apps/app1",
-    "./apps/app2",
+    "./apps/app2"
   ],
-  exact: false,
-};
+  "exact": false
+}
 ```
 
-Example config file (multiple packages):
+Example JavaScript config (ES module - requires `"type": "module"` in package.json or use `.mjs` extension):
 
 ```javascript
 export default {
