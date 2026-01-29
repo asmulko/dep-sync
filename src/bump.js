@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { green, yellow, cyan, gray, bold, red } from "./colors.js";
+import { green, yellow, cyan, gray, bold } from "./colors.js";
+import { suggestNextVersion } from "./version.js";
 
 const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
@@ -167,5 +168,96 @@ export function bumpDependency(options) {
   }
   console.log();
 
+  return results;
+}
+
+/**
+ * Bump the version field in a project's package.json.
+ * @param {Object} options
+ * @param {string} options.projectPath - Path to project directory
+ * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
+ * @param {string} options.prereleaseTag - Tag for prerelease (default: 'rc')
+ * @param {boolean} options.dryRun - If true, only report changes without writing
+ * @returns {{ success: boolean, oldVersion?: string, newVersion?: string, filePath?: string, error?: string }}
+ */
+export function bumpProjectVersion(options) {
+  const { projectPath, bumpType, prereleaseTag = "rc", dryRun } = options;
+  const pkgJsonPath = path.resolve(projectPath, "package.json");
+
+  if (!fs.existsSync(pkgJsonPath)) {
+    return { success: false, error: "package.json not found" };
+  }
+
+  try {
+    const content = fs.readFileSync(pkgJsonPath, "utf-8");
+    const pkgJson = JSON.parse(content);
+    const oldVersion = pkgJson.version;
+
+    if (!oldVersion) {
+      return { success: false, error: "No version field in package.json" };
+    }
+
+    const newVersion = suggestNextVersion(oldVersion, bumpType, prereleaseTag);
+    
+    if (!newVersion) {
+      return { success: false, error: `Could not calculate ${bumpType} version from ${oldVersion}` };
+    }
+
+    if (!dryRun) {
+      pkgJson.version = newVersion;
+      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
+    }
+
+    return {
+      success: true,
+      oldVersion,
+      newVersion,
+      filePath: pkgJsonPath,
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Bump versions in multiple projects.
+ * @param {Object} options
+ * @param {string[]} options.paths - Paths to project directories
+ * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
+ * @param {string} options.prereleaseTag - Tag for prerelease (default: 'rc')
+ * @param {boolean} options.dryRun - If true, only report changes without writing
+ * @returns {Object} Results with updated files
+ */
+export function bumpVersions(options) {
+  const { paths, bumpType, prereleaseTag = "rc", dryRun } = options;
+
+  const results = {
+    updated: [],
+    errors: [],
+  };
+
+  console.log();
+  console.log(bold(`Bumping versions (${bumpType}):`));
+  console.log();
+
+  for (const projectPath of paths) {
+    const projectName = path.basename(path.resolve(projectPath));
+    const result = bumpProjectVersion({ projectPath, bumpType, prereleaseTag, dryRun });
+
+    if (result.success) {
+      console.log(`${green("✔")} ${bold(projectName)}: ${result.oldVersion} → ${result.newVersion}`);
+      results.updated.push({
+        projectName,
+        filePath: result.filePath,
+        oldVersion: result.oldVersion,
+        newVersion: result.newVersion,
+      });
+    } else {
+      console.log(`${yellow("⚠")} ${projectName}: ${result.error}`);
+      results.errors.push({ projectName, error: result.error });
+    }
+  }
+
+  console.log();
   return results;
 }

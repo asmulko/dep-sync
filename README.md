@@ -107,6 +107,26 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --branch chore/react-18 --push
 dep-sync react 18.2.0 --paths ./apps/* --commit --message "chore(deps): upgrade react"
 ```
 
+### Bump project versions
+
+Automatically bump the `version` field in each project's `package.json` after updating dependencies:
+
+```bash
+# Patch version bump (1.0.0 → 1.0.1)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version patch
+
+# Minor version bump (1.0.0 → 1.1.0)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version minor
+
+# Major version bump (1.0.0 → 2.0.0)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version major
+
+# Prerelease bump (1.0.0 → 1.0.1-rc.0)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease
+```
+
+> **Note:** Version bumps are only applied to projects that actually had dependency updates.
+
 ## Options
 
 | Option | Description |
@@ -122,6 +142,7 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --message "chore(deps): upgrade 
 | `--push` | Push to remote after committing (skips repos that are behind) |
 | `--message <msg>` | Custom commit message |
 | `--branch <name>` | Create a new branch before committing |
+| `--bump-version <type>` | Bump version in each project's package.json (patch\|minor\|major\|prerelease) |
 | `--config <path>` | Path to config file |
 | `--interactive, -i` | Run in interactive mode |
 | `--help` | Show help message |

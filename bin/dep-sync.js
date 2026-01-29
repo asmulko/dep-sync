@@ -2,7 +2,7 @@
 
 import { parseArgs } from "node:util";
 import path from "node:path";
-import { bumpDependency } from "../src/bump.js";
+import { bumpDependency, bumpVersions } from "../src/bump.js";
 import { loadConfig, mergeOptions } from "../src/config.js";
 import { interactiveMode } from "../src/interactive.js";
 import { performGitOperations, prepareRepo, getGitRoot, isGitRepo, pushToRemote, isBehindRemote } from "../src/git.js";
@@ -30,8 +30,9 @@ Options:
   --commit             Commit changes after updating (separate commit per package)
   --single-commit      Combine all package updates into one commit
   --push               Push to remote after committing (skips repos that are behind)
-  --message <msg>      Custom commit message (default: "chore: update <pkg> to <version>")
+  --message <msg>      Custom commit message (default: "Update <pkg> to <version>")
   --branch <name>      Create a new branch before committing
+  --bump-version <type> Bump version in each project's package.json (patch|minor|major|prerelease)
   --interactive, -i    Run in interactive mode
   --help               Show this help message
 
@@ -53,6 +54,9 @@ Examples:
 
   # Skip git sync (fetch/pull)
   dep-sync react 18.2.0 --paths ./apps/* --no-sync --commit
+
+  # Bump project versions after updating dependencies
+  dep-sync --pkg react@18.2.0 --paths ./apps/* --commit --bump-version patch
 
   # Using config file
   dep-sync --config dep-sync.config.js
@@ -105,6 +109,7 @@ async function main() {
       push: { type: "boolean", default: false },
       message: { type: "string" },
       branch: { type: "string" },
+      "bump-version": { type: "string" },
       interactive: { type: "boolean", short: "i", default: false },
     },
     allowPositionals: true,
@@ -123,6 +128,7 @@ async function main() {
     push: values.push,
     message: values.message,
     branch: values.branch,
+    bumpVersion: values["bump-version"],
   };
 
   if (values.interactive) {
@@ -178,6 +184,14 @@ async function main() {
   // Sanitize branch name if provided
   if (baseOptions.branch) {
     baseOptions.branch = sanitizeBranchName(baseOptions.branch);
+  }
+
+  // Validate --bump-version option
+  const validBumpTypes = ["patch", "minor", "major", "prerelease"];
+  if (baseOptions.bumpVersion && !validBumpTypes.includes(baseOptions.bumpVersion)) {
+    console.error(`${red("✖")} Invalid --bump-version value: ${baseOptions.bumpVersion}`);
+    console.error(`   Valid values: ${validBumpTypes.join(", ")}`);
+    process.exit(1);
   }
 
   // Git sync: fetch and pull --rebase before updating
@@ -277,6 +291,41 @@ async function main() {
       branch: baseOptions.branch,
       dryRun: baseOptions.dryRun,
     });
+  }
+
+  // Bump project versions if requested
+  if (baseOptions.bumpVersion && allUpdatedFiles.length > 0) {
+    // Only bump versions for projects that had dependency updates
+    const updatedProjectPaths = [...new Set(
+      allUpdatedFiles.map((f) => path.dirname(f))
+    )];
+    
+    const versionResults = bumpVersions({
+      paths: updatedProjectPaths,
+      bumpType: baseOptions.bumpVersion,
+      dryRun: baseOptions.dryRun,
+    });
+
+    // Commit version bumps if --commit is enabled
+    if (baseOptions.commit && versionResults.updated.length > 0) {
+      const versionFiles = versionResults.updated.map((r) => r.filePath);
+      
+      performGitOperations({
+        updatedFiles: versionFiles,
+        packageName: "version bump",
+        version: baseOptions.bumpVersion,
+        shouldCommit: true,
+        commitMessage: baseOptions.message || `Bump versions (${baseOptions.bumpVersion})`,
+        dryRun: baseOptions.dryRun,
+      });
+      
+      // Add version files to allUpdatedFiles for push
+      allUpdatedFiles.push(...versionFiles);
+    }
+
+    if (versionResults.errors.length > 0) {
+      hadErrors = true;
+    }
   }
 
   // Push to remote if requested

@@ -4,7 +4,7 @@ import path from "node:path";
 import { cyan, bold, gray, yellow } from "./colors.js";
 import { getVersionChangeType, getVersionLabel, suggestNextVersion } from "./version.js";
 
-const { MultiSelect, Input, Confirm, Select } = enquirer;
+const { MultiSelect, Input, Confirm } = enquirer;
 
 /**
  * Discover projects in given paths by checking for package.json.

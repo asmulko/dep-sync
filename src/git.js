@@ -215,13 +215,16 @@ export function commit(message, cwd) {
 }
 
 /**
- * Generate default commit message.
- * @param {string} packageName - Package name
- * @param {string} version - Version
+ * Generate default commit message for dependency updates.
+ * @param {string} packageName - Package name or summary
+ * @param {string} version - Version (optional)
  * @returns {string}
  */
 export function defaultCommitMessage(packageName, version) {
-  return `chore: update ${packageName} to ${version}`;
+  if (version) {
+    return `Update ${packageName} to ${version}`;
+  }
+  return `Update ${packageName} dependencies`;
 }
 
 /**
