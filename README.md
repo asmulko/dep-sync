@@ -125,11 +125,26 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version minor
 # Major version bump (1.0.0 → 2.0.0)
 dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version major
 
-# Prerelease bump (1.0.0 → 1.0.1-rc.0)
-dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease
+# Prerelease bump with custom identifier (1.0.0 → 1.0.1-rc.0)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease --preid rc
+
+# Prerelease with beta tag (1.0.0 → 1.0.1-beta.0)
+dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease --preid beta
 ```
 
 > **Note:** Version bumps are only applied to projects that actually had dependency updates.
+
+### Standalone version bump
+
+Bump project versions without updating any dependencies:
+
+```bash
+# Bump all projects to next patch version
+dep-sync --bump-version patch --paths ./apps/* --commit
+
+# Bump to prerelease with commit and push
+dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit --push
+```
 
 ## Options
 
@@ -147,6 +162,7 @@ dep-sync react 18.2.0 --paths ./apps/* --commit --bump-version prerelease
 | `--message <msg>` | Custom commit message |
 | `--branch <name>` | Create a new branch before committing |
 | `--bump-version <type>` | Bump version in each project's package.json (patch\|minor\|major\|prerelease) |
+| `--preid <tag>` | Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease |
 | `--config <path>` | Path to config file |
 | `--interactive, -i` | Run in interactive mode |
 | `--help` | Show help message |

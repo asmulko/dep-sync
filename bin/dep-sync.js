@@ -12,6 +12,7 @@ import { bold, red, yellow, gray, green, cyan } from "../src/colors.js";
 const usage = `
 Usage: dep-sync <package> <version> [options]
        dep-sync --pkg <name>@<version> [--pkg ...] --paths <paths...>
+       dep-sync --bump-version <type> --paths <paths...>
        dep-sync --config <path>
        dep-sync --interactive --paths <paths...>
 
@@ -30,9 +31,10 @@ Options:
   --commit             Commit changes after updating (separate commit per package)
   --single-commit      Combine all package updates into one commit
   --push               Push to remote after committing (skips repos that are behind)
-  --message <msg>      Custom commit message (default: "Update <pkg> to <version>")
+  --message <msg>      Custom commit message (default: "Update <pkg> dependency")
   --branch <name>      Create a new branch before committing
   --bump-version <type> Bump version in each project's package.json (patch|minor|major|prerelease)
+  --preid <tag>        Prerelease identifier (e.g., rc, beta, alpha). Used with --bump-version prerelease
   --interactive, -i    Run in interactive mode
   --help               Show this help message
 
@@ -57,6 +59,9 @@ Examples:
 
   # Bump project versions after updating dependencies
   dep-sync --pkg react@18.2.0 --paths ./apps/* --commit --bump-version patch
+
+  # Standalone version bump (no dependency updates)
+  dep-sync --bump-version prerelease --preid rc --paths ./apps/* --commit
 
   # Using config file
   dep-sync --config dep-sync.config.js
@@ -110,6 +115,7 @@ async function main() {
       message: { type: "string" },
       branch: { type: "string" },
       "bump-version": { type: "string" },
+      preid: { type: "string" },
       interactive: { type: "boolean", short: "i", default: false },
     },
     allowPositionals: true,
@@ -129,7 +135,15 @@ async function main() {
     message: values.message,
     branch: values.branch,
     bumpVersion: values["bump-version"],
+    preid: values.preid,
   };
+
+  // Standalone bump-version mode (no packages to update)
+  const isStandaloneBumpVersion = values["bump-version"] && 
+    !values.config && 
+    !values.interactive && 
+    !values.pkg?.length && 
+    positionals.length === 0;
 
   if (values.interactive) {
     // Interactive mode - prompts for all input, ignores positionals
@@ -151,8 +165,8 @@ async function main() {
   } else if (values.pkg && values.pkg.length > 0) {
     // Multi-package mode via --pkg flags
     packages = values.pkg.map(parsePackageSpec);
-  } else {
-    // Single package mode (positional args)
+  } else if (!isStandaloneBumpVersion) {
+    // Single package mode (positional args) - only if not standalone bump-version
     if (positionals.length < 2) {
       console.error("Error: package name and version are required.\n");
       printUsage();
@@ -171,7 +185,7 @@ async function main() {
   // Deduplicate paths
   baseOptions.paths = [...new Set(baseOptions.paths)];
 
-  if (packages.length === 0) {
+  if (packages.length === 0 && !isStandaloneBumpVersion) {
     console.error("Error: at least one package is required.\n");
     printUsage();
   }
@@ -265,13 +279,11 @@ async function main() {
   // Single commit mode: commit all packages together
   if (baseOptions.singleCommit && (baseOptions.commit || baseOptions.branch) && allUpdatedFiles.length > 0) {
     const uniqueFiles = [...new Set(allUpdatedFiles)];
-    const pkgSummary = packages.length === 1 
-      ? `${packages[0].name} to ${packages[0].version}`
-      : `${packages.length} packages`;
+    const packageNames = packages.map((p) => p.name);
     
     performGitOperations({
       updatedFiles: uniqueFiles,
-      packageName: pkgSummary,
+      packageName: packageNames,
       version: "",
       shouldCommit: baseOptions.commit,
       branch: baseOptions.branch,
@@ -294,37 +306,42 @@ async function main() {
   }
 
   // Bump project versions if requested
-  if (baseOptions.bumpVersion && allUpdatedFiles.length > 0) {
-    // Only bump versions for projects that had dependency updates
-    const updatedProjectPaths = [...new Set(
-      allUpdatedFiles.map((f) => path.dirname(f))
-    )];
-    
-    const versionResults = bumpVersions({
-      paths: updatedProjectPaths,
-      bumpType: baseOptions.bumpVersion,
-      dryRun: baseOptions.dryRun,
-    });
+  if (baseOptions.bumpVersion) {
+    // Determine which projects to bump:
+    // - If standalone mode (no packages), bump all projects in paths
+    // - Otherwise, only bump projects that had dependency updates
+    const projectPathsToBump = isStandaloneBumpVersion
+      ? baseOptions.paths
+      : [...new Set(allUpdatedFiles.map((f) => path.dirname(f)))];
 
-    // Commit version bumps if --commit is enabled
-    if (baseOptions.commit && versionResults.updated.length > 0) {
-      const versionFiles = versionResults.updated.map((r) => r.filePath);
-      
-      performGitOperations({
-        updatedFiles: versionFiles,
-        packageName: "version bump",
-        version: baseOptions.bumpVersion,
-        shouldCommit: true,
-        commitMessage: baseOptions.message || `Bump versions (${baseOptions.bumpVersion})`,
+    if (projectPathsToBump.length > 0) {
+      const versionResults = bumpVersions({
+        paths: projectPathsToBump,
+        bumpType: baseOptions.bumpVersion,
+        preid: baseOptions.preid,
         dryRun: baseOptions.dryRun,
       });
-      
-      // Add version files to allUpdatedFiles for push
-      allUpdatedFiles.push(...versionFiles);
-    }
 
-    if (versionResults.errors.length > 0) {
-      hadErrors = true;
+      // Commit version bumps if --commit is enabled
+      if (baseOptions.commit && versionResults.updated.length > 0) {
+        const versionFiles = versionResults.updated.map((r) => r.filePath);
+        
+        // Add to allUpdatedFiles for push
+        allUpdatedFiles.push(...versionFiles);
+        
+        performGitOperations({
+          updatedFiles: versionFiles,
+          packageName: "version bump",
+          version: baseOptions.bumpVersion,
+          shouldCommit: true,
+          commitMessage: baseOptions.message || `Bump versions (${baseOptions.bumpVersion})`,
+          dryRun: baseOptions.dryRun,
+        });
+      }
+
+      if (versionResults.errors.length > 0) {
+        hadErrors = true;
+      }
     }
   }
 

@@ -216,15 +216,24 @@ export function commit(message, cwd) {
 
 /**
  * Generate default commit message for dependency updates.
- * @param {string} packageName - Package name or summary
- * @param {string} version - Version (optional)
+ * @param {string|string[]} packageNames - Package name(s)
+ * @param {string} version - Version (optional, only used for single package)
  * @returns {string}
  */
-export function defaultCommitMessage(packageName, version) {
-  if (version) {
-    return `Update ${packageName} to ${version}`;
+export function defaultCommitMessage(packageNames, version) {
+  // Handle array of package names
+  if (Array.isArray(packageNames)) {
+    if (packageNames.length === 1) {
+      return `Update ${packageNames[0]} dependency`;
+    }
+    return `Update ${packageNames.join(", ")} dependencies`;
   }
-  return `Update ${packageName} dependencies`;
+  
+  // Single package with version
+  if (version) {
+    return `Update ${packageNames} dependency`;
+  }
+  return `Update ${packageNames} dependencies`;
 }
 
 /**

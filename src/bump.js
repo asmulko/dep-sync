@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { green, yellow, cyan, gray, bold } from "./colors.js";
 import { suggestNextVersion } from "./version.js";
 
@@ -172,17 +173,18 @@ export function bumpDependency(options) {
 }
 
 /**
- * Bump the version field in a project's package.json.
+ * Bump the version field in a project's package.json using npm version.
  * @param {Object} options
  * @param {string} options.projectPath - Path to project directory
  * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
- * @param {string} options.prereleaseTag - Tag for prerelease (default: 'rc')
- * @param {boolean} options.dryRun - If true, only report changes without writing
+ * @param {string} options.preid - Prerelease identifier (e.g., 'rc', 'beta', 'alpha')
+ * @param {boolean} options.dryRun - If true, only report changes without running npm version
  * @returns {{ success: boolean, oldVersion?: string, newVersion?: string, filePath?: string, error?: string }}
  */
 export function bumpProjectVersion(options) {
-  const { projectPath, bumpType, prereleaseTag = "rc", dryRun } = options;
-  const pkgJsonPath = path.resolve(projectPath, "package.json");
+  const { projectPath, bumpType, preid, dryRun } = options;
+  const absolutePath = path.resolve(projectPath);
+  const pkgJsonPath = path.resolve(absolutePath, "package.json");
 
   if (!fs.existsSync(pkgJsonPath)) {
     return { success: false, error: "package.json not found" };
@@ -197,15 +199,33 @@ export function bumpProjectVersion(options) {
       return { success: false, error: "No version field in package.json" };
     }
 
-    const newVersion = suggestNextVersion(oldVersion, bumpType, prereleaseTag);
+    // Calculate what the new version would be for display (use preid if provided)
+    const newVersion = suggestNextVersion(oldVersion, bumpType, preid || "0");
     
     if (!newVersion) {
       return { success: false, error: `Could not calculate ${bumpType} version from ${oldVersion}` };
     }
 
     if (!dryRun) {
-      pkgJson.version = newVersion;
-      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
+      // Run npm version --no-git-tag-version to bump without creating git tag
+      // Add --preid for prerelease with custom identifier
+      const preidArg = bumpType === "prerelease" && preid ? ` --preid ${preid}` : "";
+      execSync(`npm version ${bumpType}${preidArg} --no-git-tag-version`, {
+        cwd: absolutePath,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      
+      // Read the actual new version from package.json (npm version may differ from our calculation)
+      const updatedContent = fs.readFileSync(pkgJsonPath, "utf-8");
+      const updatedPkgJson = JSON.parse(updatedContent);
+      
+      return {
+        success: true,
+        oldVersion,
+        newVersion: updatedPkgJson.version,
+        filePath: pkgJsonPath,
+      };
     }
 
     return {
@@ -220,16 +240,16 @@ export function bumpProjectVersion(options) {
 }
 
 /**
- * Bump versions in multiple projects.
+ * Bump versions in multiple projects using npm version.
  * @param {Object} options
  * @param {string[]} options.paths - Paths to project directories
  * @param {string} options.bumpType - Type of bump: 'patch', 'minor', 'major', 'prerelease'
- * @param {string} options.prereleaseTag - Tag for prerelease (default: 'rc')
- * @param {boolean} options.dryRun - If true, only report changes without writing
+ * @param {string} options.preid - Prerelease identifier (e.g., 'rc', 'beta', 'alpha')
+ * @param {boolean} options.dryRun - If true, only report changes without running npm version
  * @returns {Object} Results with updated files
  */
 export function bumpVersions(options) {
-  const { paths, bumpType, prereleaseTag = "rc", dryRun } = options;
+  const { paths, bumpType, preid, dryRun } = options;
 
   const results = {
     updated: [],
@@ -237,12 +257,13 @@ export function bumpVersions(options) {
   };
 
   console.log();
-  console.log(bold(`Bumping versions (${bumpType}):`));
+  const preidDisplay = bumpType === "prerelease" && preid ? ` --preid ${preid}` : "";
+  console.log(bold(`Bumping versions (${bumpType}${preidDisplay}):`));
   console.log();
 
   for (const projectPath of paths) {
     const projectName = path.basename(path.resolve(projectPath));
-    const result = bumpProjectVersion({ projectPath, bumpType, prereleaseTag, dryRun });
+    const result = bumpProjectVersion({ projectPath, bumpType, preid, dryRun });
 
     if (result.success) {
       console.log(`${green("✔")} ${bold(projectName)}: ${result.oldVersion} → ${result.newVersion}`);
