@@ -1,0 +1,44 @@
+{
+  "name": "dep-sync",
+  "version": "1.0.0",
+  "description": "Sync dependency versions across multiple projects",
+  "type": "module",
+  "bin": {
+    "dep-sync": "./bin/dep-sync.js"
+  },
+  "scripts": {
+    "start": "node bin/dep-sync.js"
+  },
+  "keywords": [
+    "dependencies",
+    "sync",
+    "cli",
+    "package.json",
+    "monorepo",
+    "version",
+    "bump",
+    "update"
+  ],
+  "license": "MIT",
+  "author": "Arturs Smulko",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asmulko/dep-sync.git"
+  },
+  "homepage": "https://github.com/asmulko/dep-sync#readme",
+  "bugs": {
+    "url": "https://github.com/asmulko/dep-sync/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "dependencies": {
+    "enquirer": "^2.4.1"
+  }
+}
